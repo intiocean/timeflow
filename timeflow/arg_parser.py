@@ -76,7 +76,7 @@ def stats(args):
     if args.report:
         work_report, slack_report = calculate_report(lines, date_from, date_to)
 
-        print_report(work_report, slack_report, work_time, slack_time, colorize=args.color)
+        print_report(work_report, slack_report, work_time, slack_time, colorize=args.no_color)
         print_today_work_time(today_work_time)
     else:
         print_stats(work_time, slack_time, today_work_time)
@@ -114,7 +114,7 @@ def set_stats_parser(subparser):
     stats_parser.add_argument("-t", "--to", help="Show work times from to specific date")
 
     stats_parser.add_argument("-r", "--report", action="store_true", help="Show stats in report form")
-    stats_parser.add_argument("-c", "--color", action="store_true", help="Colorize stats report")
+    stats_parser.add_argument("--no-color", action="store_false", default=True, help="Don't colorize the stats report")
 
     # call stats() function, when processing stats command
     stats_parser.set_defaults(func=stats)
