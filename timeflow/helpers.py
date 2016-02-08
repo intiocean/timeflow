@@ -30,7 +30,11 @@ def write_to_log_file(message):
 
 def read_log_file_lines():
     with open(LOG_FILE, 'r') as fp:
-        return [line for line in fp.readlines() if line != '\n']
+        return [line for line in fp.readlines() if _is_valid_line(line)]
+
+
+def _is_valid_line(line):
+    return not (line == '\n' or line.startswith('#'))
 
 
 def form_log_message(message):
@@ -180,9 +184,10 @@ def print_today_work_time(today_work_time):
         print(work_string)
 
 
-def create_report(report_dict, total_seconds):
+def create_report(report_dict, total_seconds, colorize_fn):
     reports = []
     report_dict = OrderedDict(sorted(report_dict.items()))
+
     for project in report_dict:
         report = ""
         project_report = report_dict[project]
@@ -194,26 +199,48 @@ def create_report(report_dict, total_seconds):
             # do not leave trailing space if there is no log
             time = '{}h {}m'.format(hr, mn)
             report += "    {:>7}".format(time)
-            report += colored(": {}\n".format(log), 'green') if log else '\n'
+            report += ": {}\n".format(colorize_fn('log', log)) if log else '\n'
 
         hr, mn = get_time(proj_seconds)
 
-        report = (colored(project, 'white', attrs=['bold'])
+        report = (colorize_fn('project_name', project)
                   + ": {}h {}m ({:.2%})\n".format(hr, mn, proj_seconds / float(total_seconds))
                   + report)
         reports.append(report)
     return '\n'.join(reports)
 
 
-def print_report(work_report_dict, slack_report_dict, work_time, slack_time):
+def print_report(work_report_dict, slack_report_dict, work_time, slack_time, colorize=False):
     work_seconds, slack_seconds = sum(work_time), sum(slack_time)
-    work_report = create_report(work_report_dict, work_seconds)
-    slack_report = create_report(slack_report_dict, slack_seconds)
+    colorize_fn = _make_colorizer(colorize)
+    work_report = create_report(work_report_dict, work_seconds, colorize_fn)
+    slack_report = create_report(slack_report_dict, slack_seconds, colorize_fn)
 
     work_hours, work_minutes = get_time(work_seconds)
     slack_hours, slack_minutes = get_time(slack_seconds)
 
-    print('{:-^80}'.format(' WORK {}h {}m '.format(work_hours, work_minutes)))
+    print(colorize_fn('work_header', '{:-^80}'.format(' WORK {}h {}m '.format(work_hours, work_minutes))))
     print(work_report)
-    print('{:-^80}'.format(' SLACK {}h {}m '.format(slack_hours, slack_minutes)))
+    print(colorize_fn('slack_header', '{:-^80}'.format(' SLACK {}h {}m '.format(slack_hours, slack_minutes))))
     print(slack_report)
+
+
+def _make_colorizer(colorize):
+    if not colorize:
+        return lambda category, s: s
+
+    colors = {
+        'project_name': 'green',
+        'work_header': 'cyan',
+        'slack_header': 'yellow',
+    }
+    attrs = {
+        'project_name': ['bold'],
+        'work_header': ['bold'],
+        'slack_header': ['bold'],
+    }
+
+    def _colorize(category, str):
+        return colored(str, color=colors.get(category, None), attrs=attrs.get(category, None))
+
+    return _colorize

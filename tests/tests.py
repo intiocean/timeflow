@@ -4,8 +4,12 @@ import subprocess
 import sys
 import unittest
 
-from io import StringIO
-from unittest import mock
+try:
+    from unittest import mock
+    from io import StringIO
+except ImportError:
+    import mock
+    from StringIO import StringIO
 
 from timeflow import helpers
 from timeflow.arg_parser import parse_args
@@ -40,7 +44,7 @@ class TestArgParser(unittest.TestCase):
         # get message without datetime string and colon sign at the end of it
         msg_line = helpers.read_log_file_lines()[0]
         msg = msg_line[helpers.DATETIME_LEN+1:]
-        self.assertEqual(msg, ' loging message\n')
+        self.assertEqual(msg, 'loging message\n')
 
         args = parse_args(['log', 'second loging message'])
         args.func(args)
@@ -48,7 +52,7 @@ class TestArgParser(unittest.TestCase):
         # get message without datetime string and colon sign at the end of it
         msg_line = helpers.read_log_file_lines()[1]
         msg = msg_line[helpers.DATETIME_LEN+1:]
-        self.assertEqual(msg, ' second loging message\n')
+        self.assertEqual(msg, 'second loging message\n')
 
         # as this test creates separate log file - remove it
         try:
@@ -78,11 +82,11 @@ class TestArgParser(unittest.TestCase):
 
     def mock_date_and_stdout(self, args,
                              date_value=datetime.datetime(2015, 1, 1)):
-        # mocking example is taken from:
-        # https://docs.python.org/3/library/unittest.mock-examples.html
-        with mock.patch('timeflow.arg_parser.dt') as dt:
-            dt.now.return_value = date_value
-            dt.side_effect = lambda *args, **kw: dt(*args, **kw)
+        with mock.patch('timeflow.helpers.dt', FakeDateTime), \
+             mock.patch('timeflow.arg_parser.dt', FakeDateTime), \
+             mock.patch('timeflow.log_parser.dt', FakeDateTime):
+
+            FakeDateTime.now = classmethod(lambda cls: date_value)
 
             # mock sys.stdout to evalute python's print() output
             sys.stdout = StringIO()
@@ -91,35 +95,36 @@ class TestArgParser(unittest.TestCase):
             return sys.stdout.getvalue().strip()
 
     def test_stats(self):
-        output = self.mock_date_and_stdout(['stats'])
-        self.assertEqual(output, "Work: 02h 50min\nSlack: 01h 10min")
+        output = self.mock_date_and_stdout(['stats'],
+                                           date_value=datetime.datetime(2015,1,1,12,15))
+        self.assertEqual(output, "Work: 02h 50m\nSlack: 01h 10m\n\nToday working for: 04h 15m")
 
     def test_stats_yesterday(self):
         output = self.mock_date_and_stdout(
             ['stats', '--yesterday'],
             date_value=datetime.datetime(2015, 1, 2)
         )
-        self.assertEqual(output, "Work: 02h 50min\nSlack: 01h 10min")
+        self.assertEqual(output, "Work: 02h 50m\nSlack: 01h 10m")
 
         output = self.mock_date_and_stdout(
             ['stats', '-y'],
             date_value=datetime.datetime(2015, 1, 2)
         )
-        self.assertEqual(output, "Work: 02h 50min\nSlack: 01h 10min")
+        self.assertEqual(output, "Work: 02h 50m\nSlack: 01h 10m")
 
     def test_stats_day(self):
         output = self.mock_date_and_stdout(['stats', '--day', '2015-01-01'])
-        self.assertEqual(output, "Work: 02h 50min\nSlack: 01h 10min")
+        self.assertEqual(output, "Work: 02h 50m\nSlack: 01h 10m")
 
         output = self.mock_date_and_stdout(['stats', '-d', '2015-01-01'])
-        self.assertEqual(output, "Work: 02h 50min\nSlack: 01h 10min")
+        self.assertEqual(output, "Work: 02h 50m\nSlack: 01h 10m")
 
     def test_stats_week(self):
         output = self.mock_date_and_stdout(
             ['stats', '--week', '2015-01-02'],
             date_value=datetime.datetime(2015, 2, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
     @mock.patch('timeflow.helpers.dt', FakeDateTime)
     @mock.patch('timeflow.arg_parser.dt', FakeDateTime)
@@ -131,26 +136,26 @@ class TestArgParser(unittest.TestCase):
         args = parse_args(['stats', '--last-week'])
         args.func(args)
         output = sys.stdout.getvalue().strip()
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
     def test_stats_month(self):
         output = self.mock_date_and_stdout(
             ['stats', '--month', '1'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
         output = self.mock_date_and_stdout(
             ['stats', '--month', '2015-1'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
         output = self.mock_date_and_stdout(
             ['stats', '--month', '2015-01'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
     @mock.patch('timeflow.helpers.dt', FakeDateTime)
     @mock.patch('timeflow.arg_parser.dt', FakeDateTime)
@@ -162,56 +167,53 @@ class TestArgParser(unittest.TestCase):
         args = parse_args(['stats', '--last-month'])
         args.func(args)
         output = sys.stdout.getvalue().strip()
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
     def test_stats_from(self):
         output = self.mock_date_and_stdout(
             ['stats', '--from', '2015-01-02'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 03h 10min\nSlack: 01h 30min")
+        self.assertEqual(output, "Work: 03h 10m\nSlack: 01h 30m")
 
         output = self.mock_date_and_stdout(
             ['stats', '-f', '2015-01-02'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 03h 10min\nSlack: 01h 30min")
+        self.assertEqual(output, "Work: 03h 10m\nSlack: 01h 30m")
 
     def test_stats_to(self):
         output = self.mock_date_and_stdout(
             ['stats', '--from', '2015-01-01', '--to', '2015-01-03'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
         output = self.mock_date_and_stdout(
             ['stats', '-f', '2015-01-01', '-t', '2015-01-02'],
             date_value=datetime.datetime(2015, 1, 5)
         )
-        self.assertEqual(output, "Work: 06h 00min\nSlack: 02h 40min")
+        self.assertEqual(output, "Work: 06h 00m\nSlack: 02h 40m")
 
     def test_stats_report(self):
         output = self.mock_date_and_stdout(['stats', '--report'])
         self.assertEqual(output,
-"""Django:
-    1h 35min: read documentation
-Total: 1h 35min
+"""--------------------------------- WORK 2h 50m ----------------------------------
+Django: 1h 35m (55.88%)
+     1h 35m: read documentation
 
-Timeflow:
-    1h 15min: start project
-Total: 1h 15min
+Timeflow: 1h 15m (44.12%)
+     1h 15m: start project
 
---------------------------------------------------------------------------------
-Breakfast:
-    0h 45min
-Total: 0h 45min
+--------------------------------- SLACK 1h 10m ---------------------------------
+Other: 0h 45m (64.29%)
+     0h 45m: Breakfast 
 
-Slack:
-    0h 25min: watch YouTube
-Total: 0h 25min
+Slack: 0h 25m (35.71%)
+     0h 25m: watch YouTube
 
-Work: 02h 50min
-Slack: 01h 10min""")
+
+Today working for: 16h 00m""")
 
 
 if __name__ == "__main__":
