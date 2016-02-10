@@ -29,15 +29,6 @@ def write_to_log_file(message):
         fp.write(log_message)
 
 
-def read_log_file_lines():
-    with open(LOG_FILE, 'r') as fp:
-        return [line for line in fp.readlines() if _is_valid_line(line)]
-
-
-def _is_valid_line(line):
-    return not (line == '\n' or line.startswith('#'))
-
-
 def form_log_message(message):
     time_str = dt.now().strftime(DATETIME_FORMAT)
     log_message = ' '.join((time_str, message))
@@ -67,31 +58,6 @@ def is_another_day():
         return True
     else:
         return False
-
-
-def find_date_line(lines, date_to_find, reverse=False):
-    "Returns line index of lines, with date_to_find"
-    len_lines = len(lines) - 1
-    if reverse:
-        lines = reversed(lines)
-    for i, line in enumerate(lines):
-        date_obj = dt.strptime(line[:DATE_LEN], DATE_FORMAT)
-        date_to_find_obj = dt.strptime(date_to_find, DATE_FORMAT)
-
-        if reverse and date_obj <= date_to_find_obj:
-            return len_lines - i
-        elif not reverse and date_obj >= date_to_find_obj:
-            return i
-
-
-def date_begins(lines, date_to_find):
-    "Returns first line out of lines, with date_to_find"
-    return find_date_line(lines, date_to_find)
-
-
-def date_ends(lines, date_to_find):
-    "Returns last line out of lines, with date_to_find"
-    return find_date_line(lines, date_to_find, reverse=True)
 
 
 def get_time(seconds):

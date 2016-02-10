@@ -1,37 +1,14 @@
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import re
 
 from datetime import datetime as dt
+import logging as logger
 
-from timeflow.helpers import (
-    DATETIME_FORMAT,
-    date_begins,
-    date_ends,
-    read_log_file_lines,
-)
+from timeflow.helpers import DATETIME_FORMAT, LOG_FILE, DATE_FORMAT
 
 
-class Line():
-    __slots__ = ['date', 'time', 'project', 'log', 'is_slack']
-
-    def __init__(self, date, time, project, log, is_slack):
-        self.date = date
-        self.time = time
-        self.project = project
-        self.log = log
-        self.is_slack = is_slack
-
-
-def clean_line(time, project, log):
-    "Cleans line data from unnecessary chars"
-    # project and log can have new line char at the end, remove it
-    if project and project[-1] == '\n':
-        project = project[:-1]
-
-    if log and log[-1] == '\n':
-        log = log[:-1]
-
-    return time, project, log
+LogLine = namedtuple('LogLine', ['timestamp', 'message'])
+Timelog = namedtuple('Timelog', ['start', 'end', 'project', 'log', 'is_slack'])
 
 
 def parse_message(message):
@@ -54,44 +31,53 @@ def parse_message(message):
 
 
 def find_slack(project, log):
-    if project.endswith("**") or log.endswith("**"):
-        return True
-    return False
-
-
-def strip_log(string):
-    "Strips string from slack marks and leading/trailing spaces"
-    return string.strip().rstrip('**')
-
-
-def parse_line(line):
-    """Parses log line into logical units: time, project and message
-
-    Log line looks like this:
-    [date]_[time]_[project]:_[log message]
     """
-    # get date time and the rest of a message
-    split = line.strip().split(None, 2)
-    if len(split) == 3:
-        date, time, message = split
-    else:
-        message = ''
-        date, time = split
-
-    project, log = parse_message(message)
-    time, project, log = clean_line(time, project, log)
-    is_slack = find_slack(project, log)
-
-    return Line(date, time, project, log, is_slack)
+    Identifies if this log is a slack log and strips the slack markers as well as whitespace
+    :param project: the project string
+    :param log: the log string
+    :return: `tuple` in the form of (is_slack, project, log) where project and log have had the slack markers removed
+    """
+    is_slack = project.endswith("**") or log.endswith("**")
+    return is_slack, project.rstrip('**').strip(), log.rstrip('**').strip()
 
 
-def parse_lines():
-    """Returns a list of objects representing log file"""
-    lines = read_log_file_lines()
-    data = []
-    for line in lines:
-        data.append(parse_line(line))
-    return data
+def get_timelogs():
+    lines = parse_lines_new()
+    res = defaultdict(list)
+    for d, logs in lines.iteritems():
+        prev_dt = None
+        for l in logs:
+            if prev_dt is not None:
+                project, log = parse_message(l.message)
+                is_slack, project, log = find_slack(project, log)
+                res[d].append(Timelog(prev_dt, l.timestamp, project, log, is_slack))  # TODO: group by project here?
+                time_since_last_log = (l.timestamp - prev_dt).total_seconds()
+                if time_since_last_log < 0:
+                    logger.warn('It looks like one of your time logs is out of order - time just jumped backwards!')
+            prev_dt = l.timestamp
+    return dict(res)
+
+
+def parse_lines_new():
+    """Returns a dictionary keyed by date and with a list of objects representing each time log
+    Each log line looks like this: [date] [time] [project]: [log message]
+    """
+    res = defaultdict(list)
+    with open(LOG_FILE, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):  # If there is any content on the line & skipping comments
+                split = line.split(None, 2)
+                if len(split) == 3:
+                    date, time, message = split
+                else:
+                    message = ''
+                    date, time = split
+                timestamp = dt.strptime(date + ' ' + time, DATETIME_FORMAT)
+                date = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+                res[date].append(LogLine(timestamp, message))
+        return dict(res)
+
 
 
 def calc_time_diff(line, next_line):
@@ -106,100 +92,33 @@ def calc_time_diff(line, next_line):
     return (next_line_time - line_time).seconds
 
 
-def calculate_stats(lines, date_from, date_to, today=False):
-    work_time = []
-    slack_time = []
-    today_work_time = None
-
-    line_begins = date_begins(lines, date_from)
-    line_ends = date_ends(lines, date_to)
-
-    date_not_found = (line_begins is None or line_ends < line_begins)
-    if date_not_found:
-        return work_time, slack_time, today_work_time
-
-    data = parse_lines()
-
-    for i, line in enumerate(data[line_begins:line_ends+1]):
-        # if we got to the last line - stop
-        if line_begins+i+1 > line_ends:
-            break
-
-        next_line = data[line_begins+i+1]
-
-        line_date = line.date
-        next_line_date = next_line.date
-
-        # if it's day switch, skip this cycle
-        if line_date != next_line_date:
-            continue
-
-        if next_line.is_slack:
-            slack_time.append(calc_time_diff(line, next_line))
-        else:
-            work_time.append(calc_time_diff(line, next_line))
-
-    if today:
-        today_start_time = dt.strptime(
-            "{} {}".format(data[line_begins].date, data[line_begins].time),
-            DATETIME_FORMAT
-        )
-        today_work_time = (dt.now() - today_start_time).seconds
-
-    return work_time, slack_time, today_work_time
-
-
-def calculate_report(lines, date_from, date_to):
-    """Creates and returns report dictionaries
+def calculate_report_and_get_time(date_from, date_to, today=False):
+    """Creates and returns report dictionaries as well as work times
 
     Report dicts have form like this:
     {<Project>: {<log_message>: <accumulative time>},
                 {<log_message1>: <accumulative time1>}}
     """
-    work_dict = defaultdict(lambda: defaultdict(dict))
-    slack_dict = defaultdict(lambda: defaultdict(dict))
+    date_from = dt.strptime(date_from, DATE_FORMAT)
+    date_to = dt.strptime(date_to, DATE_FORMAT)
+    work_time = []
+    slack_time = []
 
-    line_begins = date_begins(lines, date_from)
-    line_ends = date_ends(lines, date_to)
 
-    date_not_found = (line_begins is None or line_ends < line_begins)
-    if date_not_found:
-        return work_dict, slack_dict
+    timelogs = get_timelogs()
 
-    data = parse_lines()
+    work_dict = defaultdict(lambda: defaultdict(int))
+    slack_dict = defaultdict(lambda: defaultdict(int))
+    for date, logs in timelogs.iteritems():
+        if date_from <= date <= date_to:
+            for l in logs:
+                seconds = int((l.end - l.start).total_seconds())
+                if l.is_slack:
+                    slack_dict[l.project][l.log] += seconds
+                    slack_time.append(seconds)
+                else:
+                    work_dict[l.project][l.log] += seconds
+                    work_time.append(seconds)
 
-    for i, line in enumerate(data[line_begins:line_ends+1]):
-        # if we got to the last line - stop
-        if line_begins+i+1 > line_ends:
-            break
-
-        next_line = data[line_begins+i+1]
-
-        line_date = line.date
-        next_line_date = next_line.date
-        # if it's day switch, skip this cycle
-        if line_date != next_line_date:
-            continue
-
-        time_diff = calc_time_diff(line, next_line)
-
-        project = strip_log(next_line.project)
-        log = strip_log(next_line.log)
-        if next_line.is_slack:
-            # if log message is identical add time_diff
-            # to total time of the log
-            if slack_dict[project][log]:
-                total_time = slack_dict[project][log]
-                total_time += time_diff
-                slack_dict[project][log] = total_time
-            else:
-                slack_dict[project][log] = time_diff
-        else:
-            if work_dict[project][log]:
-                total_time = work_dict[project][log]
-                total_time += time_diff
-                work_dict[project][log] = total_time
-            else:
-                work_dict[project][log] = time_diff
-
-    return work_dict, slack_dict
+    today_work_time = int((dt.now() - timelogs[date_from][0].start).total_seconds()) if today else None
+    return work_dict, slack_dict, work_time, slack_time, today_work_time

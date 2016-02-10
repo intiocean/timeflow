@@ -11,16 +11,12 @@ from timeflow.helpers import (
     get_last_week,
     get_month_range,
     get_week_range,
-    read_log_file_lines,
     print_stats,
     print_report,
     write_to_log_file,
     print_today_work_time)
 
-from timeflow.log_parser import (
-    calculate_report,
-    calculate_stats,
-)
+from timeflow.log_parser import calculate_report_and_get_time
 
 
 def log(args):
@@ -71,11 +67,9 @@ def stats(args):
         date_from = date_to = dt.now().strftime(DATE_FORMAT)
         today = True
 
-    lines = read_log_file_lines()
-    work_time, slack_time, today_work_time = calculate_stats(lines, date_from, date_to, today=today)
+    (work_report, slack_report, work_time, slack_time,
+     today_work_time) = calculate_report_and_get_time(date_from,date_to, today=today)
     if args.report:
-        work_report, slack_report = calculate_report(lines, date_from, date_to)
-
         print_report(work_report, slack_report, work_time, slack_time, colorize=args.no_color)
         print_today_work_time(today_work_time)
     else:
