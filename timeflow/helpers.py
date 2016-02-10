@@ -8,6 +8,7 @@ import calendar
 import os
 import sys
 
+import re
 from termcolor import colored
 
 
@@ -187,6 +188,9 @@ def print_today_work_time(today_work_time):
 def create_report(report_dict, total_seconds, colorize_fn):
     reports = []
     report_dict = OrderedDict(sorted(report_dict.items()))
+    hashtag_finder = re.compile(r'(#\w+)\b')
+    colour_hash = lambda s: hashtag_finder.sub(lambda x: colorize_fn('hashtag', x.group(0)), s)
+
 
     for project in report_dict:
         report = ""
@@ -199,7 +203,7 @@ def create_report(report_dict, total_seconds, colorize_fn):
             # do not leave trailing space if there is no log
             time = '{}h {}m'.format(hr, mn)
             report += "    {:>7}".format(time)
-            report += ": {}\n".format(colorize_fn('log', log)) if log else '\n'
+            report += ": {}\n".format(colour_hash(colorize_fn('log', log))) if log else '\n'
 
         hr, mn = get_time(proj_seconds)
 
@@ -233,6 +237,7 @@ def _make_colorizer(colorize):
         'project_name': 'green',
         'work_header': 'cyan',
         'slack_header': 'yellow',
+        'hashtag': 'cyan'
     }
     attrs = {
         'project_name': ['bold'],
