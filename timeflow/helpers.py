@@ -13,8 +13,9 @@ from termcolor import colored
 
 
 LOG_FILE = os.path.expanduser('~/timelog.txt')
-DATETIME_FORMAT = "%Y-%m-%d %H:%M"
-DATE_FORMAT = "%Y-%m-%d"
+DATETIME_FORMAT = '%Y-%m-%d %H:%M'
+DATE_FORMAT = '%Y-%m-%d'
+DATE_FORMAT_FOR_STATS = '%a %d %b %Y'
 # length of date string
 DATE_LEN = 10
 # length of datetime string
@@ -72,10 +73,7 @@ def get_last_week():
     weekday = week_ago.isocalendar()[2] - 1
     last_monday = week_ago - timedelta(days=weekday)
     last_sunday = last_monday + timedelta(days=6)
-
-    date_from = last_monday.strftime(DATE_FORMAT)
-    date_to = last_sunday.strftime(DATE_FORMAT)
-    return date_from, date_to
+    return last_monday, last_sunday
 
 
 def get_week_range(date):
@@ -85,9 +83,7 @@ def get_week_range(date):
     monday = date - timedelta(days=weekday)
     sunday = monday + timedelta(days=6)
 
-    date_from = monday.strftime(DATE_FORMAT)
-    date_to = sunday.strftime(DATE_FORMAT)
-    return date_from, date_to
+    return monday, sunday
 
 
 def parse_month_arg(arg):
@@ -116,12 +112,13 @@ def parse_month_arg(arg):
         sys.exit('Argument in form of YYYY-MM is expected, e.g. 2015-9')
 
 
-def get_month_range(arg):
-    year, month = parse_month_arg(arg)
+def get_month_range(arg, year=None):
+    arg_w_year = '{}-{}'.format(year, arg) if year else arg
+    year, month = parse_month_arg(arg_w_year)
     days_in_month = calendar.monthrange(year, month)[1]
 
-    date_from = '{}-{:02}-01'.format(year, month)
-    date_to = '{}-{:02}-{:02}'.format(year, month, days_in_month)
+    date_from = dt.strptime('{}-{:02}-01'.format(year, month), DATE_FORMAT)
+    date_to = dt.strptime('{}-{:02}-{:02}'.format(year, month, days_in_month), DATE_FORMAT)
 
     return date_from, date_to
 
@@ -180,7 +177,7 @@ def create_report(report_dict, total_seconds, colorize_fn):
     return '\n'.join(reports)
 
 
-def print_report(work_report_dict, slack_report_dict, work_time, slack_time, colorize=False):
+def print_report(work_report_dict, slack_report_dict, work_time, slack_time, date_from, date_to, colorize=False):
     work_seconds, slack_seconds = sum(work_time), sum(slack_time)
     colorize_fn = _make_colorizer(colorize)
     work_report = create_report(work_report_dict, work_seconds, colorize_fn)
@@ -189,9 +186,14 @@ def print_report(work_report_dict, slack_report_dict, work_time, slack_time, col
     work_hours, work_minutes = get_time(work_seconds)
     slack_hours, slack_minutes = get_time(slack_seconds)
 
-    print(colorize_fn('work_header', '{:-^80}'.format(' WORK {}h {}m '.format(work_hours, work_minutes))))
+    dt_str = lambda d: d.strftime(DATE_FORMAT_FOR_STATS)
+
+    report_dates_str = '{}'.format(dt_str(date_to)) if date_to == date_from else '{} to {}'.format(dt_str(date_from),
+                                                                                                   dt_str(date_to))
+    print(colorize_fn('report_header','Work report for {}'.format(report_dates_str)))
+    print(colorize_fn('section_header', '{:-^80}'.format(' WORK {}h {}m '.format(work_hours, work_minutes))))
     print(work_report)
-    print(colorize_fn('slack_header', '{:-^80}'.format(' SLACK {}h {}m '.format(slack_hours, slack_minutes))))
+    print(colorize_fn('section_header', '{:-^80}'.format(' SLACK {}h {}m '.format(slack_hours, slack_minutes))))
     print(slack_report)
 
 
@@ -201,14 +203,14 @@ def _make_colorizer(colorize):
 
     colors = {
         'project_name': 'green',
-        'work_header': 'cyan',
-        'slack_header': 'yellow',
+        'report_header': 'cyan',
+        'section_header': 'yellow',
         'hashtag': 'cyan'
     }
     attrs = {
         'project_name': ['bold'],
-        'work_header': ['bold'],
-        'slack_header': ['bold'],
+        'report_header': ['bold'],
+        'section_header': ['bold'],
     }
 
     def _colorize(category, str):

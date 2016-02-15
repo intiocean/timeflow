@@ -97,8 +97,6 @@ def calculate_report_and_get_time(date_from, date_to, today=False):
     {<Project>: {<log_message>: <accumulative time>},
                 {<log_message1>: <accumulative time1>}}
     """
-    date_from = dt.strptime(date_from, DATE_FORMAT)
-    date_to = dt.strptime(date_to, DATE_FORMAT)
     work_time = []
     slack_time = []
 

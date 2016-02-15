@@ -1,6 +1,5 @@
 import argparse
-from datetime import datetime as dt
-from datetime import timedelta
+from datetime import datetime as dt, timedelta, time
 import os
 import subprocess
 
@@ -45,10 +44,10 @@ def stats(args):
     today = False
     if args.yesterday:
         yesterday_obj = dt.now() - timedelta(days=1)
-        date_from = date_to = yesterday_obj.strftime(DATE_FORMAT)
+        date_from = date_to = dt.combine(yesterday_obj, time.min)
     elif args.day:
-        date_from = date_to = args.day
-    elif args.week:
+        date_from = date_to = dt.strptime(args.day, DATE_FORMAT)
+    elif args.week:  # TODO: this currently doesn't work. Fix or delete.
         date_from, date_to = get_week_range(args.week)
     elif args.last_week:
         date_from,  date_to = get_last_week()
@@ -57,20 +56,20 @@ def stats(args):
     elif args.last_month:
         date_from,  date_to = get_last_month()
     elif args._from and not args.to:
-        date_from = args._from
-        date_to = dt.now().strftime(DATE_FORMAT)
+        date_from = dt.combine(dt.strptime(args._from, DATE_FORMAT), time.min)
+        date_to = dt.combine(dt.now(), time.min)
     elif args._from and args.to:
-        date_from = args._from
-        date_to = args.to
+        date_from = dt.combine(dt.strptime(args._from, DATE_FORMAT), time.min)
+        date_to = dt.combine(dt.strptime(args.to, DATE_FORMAT), time.min)
     else:
         # default action is to show today's  stats
-        date_from = date_to = dt.now().strftime(DATE_FORMAT)
+        date_from = date_to = dt.combine(dt.now(), time.min)
         today = True
 
     (work_report, slack_report, work_time, slack_time,
-     today_work_time) = calculate_report_and_get_time(date_from,date_to, today=today)
+     today_work_time) = calculate_report_and_get_time(date_from, date_to, today=today)
     if args.report:
-        print_report(work_report, slack_report, work_time, slack_time, colorize=args.no_color)
+        print_report(work_report, slack_report, work_time, slack_time, date_from, date_to, colorize=args.no_color)
         print_today_work_time(today_work_time)
     else:
         print_stats(work_time, slack_time, today_work_time)
