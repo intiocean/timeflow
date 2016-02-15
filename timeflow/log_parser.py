@@ -1,6 +1,4 @@
 from collections import defaultdict, namedtuple
-import re
-
 from datetime import datetime as dt
 import logging as logger
 
