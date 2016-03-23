@@ -151,7 +151,7 @@ def print_today_work_time(today_work_time):
 def create_report(report_dict, total_seconds, colorize_fn):
     reports = []
     report_dict = OrderedDict(sorted(report_dict.items()))
-    hashtag_finder = re.compile(r'(#\w+)\b')
+    hashtag_finder = re.compile(r'(#[\w-]+)\b')
     colour_hash = lambda s: hashtag_finder.sub(lambda x: colorize_fn('hashtag', x.group(0)), s)
 
 
