@@ -1,16 +1,59 @@
 from collections import defaultdict, namedtuple
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 import logging as logger
 
-from timeflow.helpers import DATETIME_FORMAT, LOG_FILE, DATE_FORMAT
+import re
 
+from timeflow.helpers import DATETIME_FORMAT, LOG_FILE, DATE_FORMAT, format_timedelta
 
 LogLine = namedtuple('LogLine', ['timestamp', 'message'])
-Timelog = namedtuple('Timelog', ['start', 'end', 'project', 'log', 'is_slack'])
+Timelog = namedtuple('Timelog', ['start', 'end', 'duration', 'project', 'log', 'is_slack'])
+
+_hashtag_finder = re.compile(r'(#[\w-]+)\b')
+
+
+class Project(object):
+    def __init__(self, name, is_slack):
+        self.name = name
+        self.is_slack = is_slack
+        self.timelogs = []
+
+
+    @property
+    def total_time(self):
+        return sum([tl.end - tl.start for tl in self.timelogs], timedelta())
+
+    def add_timelog(self, timelog):
+        """
+        Add a
+        :param timelog: `Timelog` object to add to this project
+        """
+        self.timelogs.append(timelog)
+
+    def project_report(self, total_seconds, colorize_fn):
+        colour_hash = lambda s: _hashtag_finder.sub(lambda x: colorize_fn('hashtag', x.group(0)), s)
+        report = (colorize_fn('project_name', self.name)
+                  + ": {} ({:.2%})\n".format(format_timedelta(self.total_time),
+                                             self.total_time.total_seconds() / float(total_seconds)))
+        # group timelogs by message so that we only get a single line per log message
+        grouped = {}
+        for tl in self.timelogs:
+            grouped[tl.log] = grouped.get(tl.log, timedelta()) + tl.duration
+
+        sorted_timelogs = sorted(grouped.items(), key=lambda el: el[1], reverse=True)
+
+        for log, duration in sorted_timelogs:
+            report += "    {:>7}".format(format_timedelta(duration))
+            report += ": {}\n".format(colour_hash(colorize_fn('log', log))) if log else '\n'
+        return report
 
 
 def parse_message(message):
-    "Parses message as log can be empty"
+    """
+    Parses the log as the message can be empty and identifies if this log is a slack log
+    We strip the slack markers as well as whitespace.
+    :return: `tuple` in the form of (is_slack, project, log) where project and log have had the slack markers removed
+    """
     parsed_message = message.split(': ', 1)
 
     # if parsed message has only log stated, then the default project of Other is used
@@ -23,38 +66,34 @@ def parse_message(message):
     else:
         project, log = parsed_message
 
-    return project, log
-
-
-def find_slack(project, log):
-    """
-    Identifies if this log is a slack log and strips the slack markers as well as whitespace
-    :param project: the project string
-    :param log: the log string
-    :return: `tuple` in the form of (is_slack, project, log) where project and log have had the slack markers removed
-    """
     is_slack = project.endswith("**") or log.endswith("**")
     return is_slack, project.rstrip('**').strip(), log.rstrip('**').strip()
 
 
-def get_timelogs():
-    lines = parse_lines_new()
-    res = defaultdict(list)
-    for d, logs in lines.iteritems():
-        prev_dt = None
-        for l in logs:
-            if prev_dt is not None:
-                project, log = parse_message(l.message)
-                is_slack, project, log = find_slack(project, log)
-                res[d].append(Timelog(prev_dt, l.timestamp, project, log, is_slack))  # TODO: group by project here?
-                time_since_last_log = (l.timestamp - prev_dt).total_seconds()
-                if time_since_last_log < 0:
-                    logger.warn('It looks like one of your time logs is out of order - time just jumped backwards!')
-            prev_dt = l.timestamp
-    return dict(res)
+def get_projects(date_from, date_to):
+    lines = parse_lines()  # get ALL log lines as a dict of date to Logline objects
+    res = defaultdict(dict)
+    # {project_hash: Project(), project_hash: Project()} but return like [Project(), Project(), ...]
+    for date, logs in lines.iteritems():
+        if date_from <= date <= date_to:  # skip it if its not on a date we're interested in
+            prev_dt = None
+            for l in logs:
+                if prev_dt is not None:  # if this is not the first entry of the day
+                    is_slack, project, log = parse_message(l.message)
+                    project_hash = ('{}**'.format(project) if is_slack else project).lower()  # Ignore case
+                    if project_hash not in res:  # If the project doesn't exist on this date yet add it
+                        res[project_hash] = Project(name=project, is_slack=is_slack)
+                    res[project_hash].add_timelog(Timelog(prev_dt, l.timestamp, l.timestamp - prev_dt, project, log,
+                                                          is_slack))
+
+                    time_since_last_log = (l.timestamp - prev_dt).total_seconds()
+                    if time_since_last_log < 0:
+                        logger.warn('It looks like one of your time logs is out of order - time just jumped backwards!')
+                prev_dt = l.timestamp
+    return res.values()
 
 
-def parse_lines_new():
+def parse_lines():
     """Returns a dictionary keyed by date and with a list of objects representing each time log
     Each log line looks like this: [date] [time] [project]: [log message]
     """
@@ -86,33 +125,3 @@ def calc_time_diff(line, next_line):
         DATETIME_FORMAT
     )
     return (next_line_time - line_time).seconds
-
-
-def calculate_report_and_get_time(date_from, date_to, today=False):
-    """Creates and returns report dictionaries as well as work times
-
-    Report dicts have form like this:
-    {<Project>: {<log_message>: <accumulative time>},
-                {<log_message1>: <accumulative time1>}}
-    """
-    work_time = []
-    slack_time = []
-
-
-    timelogs = get_timelogs()
-
-    work_dict = defaultdict(lambda: defaultdict(int))
-    slack_dict = defaultdict(lambda: defaultdict(int))
-    for date, logs in timelogs.iteritems():
-        if date_from <= date <= date_to:
-            for l in logs:
-                seconds = int((l.end - l.start).total_seconds())
-                if l.is_slack:
-                    slack_dict[l.project][l.log] += seconds
-                    slack_time.append(seconds)
-                else:
-                    work_dict[l.project][l.log] += seconds
-                    work_time.append(seconds)
-
-    today_work_time = int((dt.now() - timelogs[date_from][0].start).total_seconds()) if today else None
-    return work_dict, slack_dict, work_time, slack_time, today_work_time

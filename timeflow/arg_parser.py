@@ -4,18 +4,10 @@ import os
 import subprocess
 
 from timeflow import __version__
-from timeflow.helpers import (
-    DATE_FORMAT, LOG_FILE,
-    get_last_month,
-    get_last_week,
-    get_month_range,
-    get_week_range,
-    print_stats,
-    print_report,
-    write_to_log_file,
-    print_today_work_time)
+from timeflow.helpers import (DATE_FORMAT, LOG_FILE, get_last_month, get_last_week, get_month_range, get_week_range,
+                              print_stats, print_report, write_to_log_file, format_timedelta)
 
-from timeflow.log_parser import calculate_report_and_get_time
+from timeflow.log_parser import get_projects
 
 
 def log(args):
@@ -41,7 +33,6 @@ def edit(args):
 
 
 def stats(args):
-    today = False
     if args.yesterday:
         yesterday_obj = dt.now() - timedelta(days=1)
         date_from = date_to = dt.combine(yesterday_obj, time.min)
@@ -64,16 +55,17 @@ def stats(args):
     else:
         # default action is to show today's  stats
         date_from = date_to = dt.combine(dt.now(), time.min)
-        today = True
 
-    (work_report, slack_report, work_time, slack_time,
-     today_work_time) = calculate_report_and_get_time(date_from, date_to, today=today)
+    projects = get_projects(date_from, date_to)
+
     if args.report:
-        print_report(work_report, slack_report, work_time, slack_time, date_from, date_to, colorize=args.no_color)
-        print_today_work_time(today_work_time)
+        print_report(projects, date_from, date_to, colorize=args.no_color)
     else:
-        print_stats(work_time, slack_time, today_work_time)
-        print_today_work_time(today_work_time)
+        print_stats(projects)
+
+    if date_from == date_to == dt.combine(dt.now(), time.min):  # then we are looking at today only
+        earliest_start = min(min(tl.start for tl in p.timelogs) for p in projects)
+        print('\nToday working for: {}'.format(format_timedelta(dt.now() - earliest_start)))
 
 
 def set_log_parser(subparser):

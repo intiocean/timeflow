@@ -61,12 +61,6 @@ def is_another_day():
         return False
 
 
-def get_time(seconds):
-    hours = seconds // 3600
-    minutes = seconds % 3600 // 60
-    return hours, minutes
-
-
 def get_last_week():
     week_ago = dt.now() - timedelta(weeks=1)
 
@@ -130,71 +124,45 @@ def get_last_month():
     return get_month_range(month)
 
 
-def print_stats(work_time, slack_time, today_work_time):
-    work_hours, work_minutes = get_time(sum(work_time))
-    slack_hours, slack_minutes = get_time(sum(slack_time))
+def print_stats(projects):
+    work_time = sum([p.total_time for p in projects if not p.is_slack], timedelta())
+    slack_time = sum([p.total_time for p in projects if p.is_slack], timedelta())
 
-    work_string = 'Work: {:02}h {:02}m'.format(work_hours, work_minutes)
-    slack_string = 'Slack: {:02}h {:02}m'.format(slack_hours, slack_minutes)
+    work_string = 'Work: {}'.format(format_timedelta(work_time))
+    slack_string = 'Slack: {}'.format(format_timedelta(slack_time))
 
     print(work_string)
     print(slack_string)
 
 
-def print_today_work_time(today_work_time):
-    if today_work_time:
-        today_hours, today_minutes = get_time(today_work_time)
-        work_string = '\nToday working for: {:02}h {:02}m'.format(today_hours, today_minutes)
-        print(work_string)
+def format_timedelta(td):
+    s = td.total_seconds()
+    # Note: this takes the floor of the minute, it would be better to round to the nearest minute
+    return '{}h {}m'.format(int(s // 3600), int(s % 3600 // 60))
 
 
-def create_report(report_dict, total_seconds, colorize_fn):
-    reports = []
-    report_dict = OrderedDict(sorted(report_dict.items()))
-    hashtag_finder = re.compile(r'(#[\w-]+)\b')
-    colour_hash = lambda s: hashtag_finder.sub(lambda x: colorize_fn('hashtag', x.group(0)), s)
+def print_report(projects, date_from, date_to, colorize=False):
+    # work = sorted([p for p in projects if not p.is_slack], key=lambda p: p.name)
+    # slack = sorted([p for p in projects if p.is_slack], key=lambda p: p.name)
+    # TODO: make the sorting be an argument so you can sort by time or name
+    work = sorted([p for p in projects if not p.is_slack], key=lambda p: p.total_time, reverse=True)
+    slack = sorted([p for p in projects if p.is_slack], key=lambda p: p.total_time, reverse=True)
+    work_time = sum([p.total_time for p in work], timedelta())
+    slack_time = sum([p.total_time for p in slack], timedelta())
 
-
-    for project in report_dict:
-        report = ""
-        project_report = report_dict[project]
-        proj_seconds = 0
-        for log in project_report:
-            proj_seconds += project_report[log]
-            hr, mn = get_time(project_report[log])
-
-            # do not leave trailing space if there is no log
-            time = '{}h {}m'.format(hr, mn)
-            report += "    {:>7}".format(time)
-            report += ": {}\n".format(colour_hash(colorize_fn('log', log))) if log else '\n'
-
-        hr, mn = get_time(proj_seconds)
-
-        report = (colorize_fn('project_name', project)
-                  + ": {}h {}m ({:.2%})\n".format(hr, mn, proj_seconds / float(total_seconds))
-                  + report)
-        reports.append(report)
-    return '\n'.join(reports)
-
-
-def print_report(work_report_dict, slack_report_dict, work_time, slack_time, date_from, date_to, colorize=False):
-    work_seconds, slack_seconds = sum(work_time), sum(slack_time)
     colorize_fn = _make_colorizer(colorize)
-    work_report = create_report(work_report_dict, work_seconds, colorize_fn)
-    slack_report = create_report(slack_report_dict, slack_seconds, colorize_fn)
-
-    work_hours, work_minutes = get_time(work_seconds)
-    slack_hours, slack_minutes = get_time(slack_seconds)
 
     dt_str = lambda d: d.strftime(DATE_FORMAT_FOR_STATS)
 
     report_dates_str = '{}'.format(dt_str(date_to)) if date_to == date_from else '{} to {}'.format(dt_str(date_from),
                                                                                                    dt_str(date_to))
     print(colorize_fn('report_header','Work report for {}'.format(report_dates_str)))
-    print(colorize_fn('section_header', '{:-^80}'.format(' WORK {}h {}m '.format(work_hours, work_minutes))))
-    print(work_report)
-    print(colorize_fn('section_header', '{:-^80}'.format(' SLACK {}h {}m '.format(slack_hours, slack_minutes))))
-    print(slack_report)
+    print(colorize_fn('section_header', '{:-^80}'.format(' WORK {} '.format(format_timedelta(work_time)))))
+    for p in work:
+        print(p.project_report(work_time.total_seconds(), colorize_fn))
+    print(colorize_fn('section_header', '{:-^80}'.format(' SLACK {} '.format(format_timedelta(slack_time)))))
+    for p in slack:
+        print(p.project_report(slack_time.total_seconds(), colorize_fn))
 
 
 def _make_colorizer(colorize):
