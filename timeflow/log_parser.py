@@ -18,8 +18,6 @@ def parse_message(message):
         split_message = parsed_message[0].split(None, 1)
         if len(split_message) == 1:
             project, log = parsed_message[0], ''
-        elif parsed_message[0].lower().startswith('eq-'):
-            project, log = split_message
         else:
             project, log = 'Other', parsed_message[0]
     else:
