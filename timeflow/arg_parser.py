@@ -58,10 +58,10 @@ def stats(args):
 
     projects = get_projects(date_from, date_to)
 
-    if args.report:
-        print_report(projects, date_from, date_to, colorize=args.no_color)
-    else:
+    if args.summary:
         print_stats(projects)
+    else:
+        print_report(projects, date_from, date_to, colorize=args.no_color)
 
     if date_from == date_to == dt.combine(dt.now(), time.min):  # then we are looking at today only
         earliest_start = min(min(tl.start for tl in p.timelogs) for p in projects)
@@ -98,7 +98,7 @@ def set_stats_parser(subparser):
     stats_parser.add_argument("-f", "--from", help="Show work times from specific date", dest="_from")
     stats_parser.add_argument("-t", "--to", help="Show work times from to specific date")
 
-    stats_parser.add_argument("-r", "--report", action="store_true", help="Show stats in report form")
+    stats_parser.add_argument("-s", "--summary", action="store_true", help="Show a summary of stats")
     stats_parser.add_argument("--no-color", action="store_false", default=True, help="Don't colorize the stats report")
 
     # call stats() function, when processing stats command
