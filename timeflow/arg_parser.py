@@ -117,7 +117,6 @@ Logging time
     tf log project
     tf log "A log message without a project will get grouped into a project called Other"
     tf log "Coffee**: the asterisks at the end of the project mark this as a non-work"
-    log"
 
 Editing the time log
     tf edit
