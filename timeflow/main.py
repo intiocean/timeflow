@@ -17,8 +17,8 @@ def log(args=sys.argv[1:]):
     main(['log'] + args)
 
 
-def stats_report(args=sys.argv[1:]):
-    main(['stats', '-r'] + args)
+def stats(args=sys.argv[1:]):
+    main(['stats'] + args)
 
 
 def edit(args=sys.argv[1:]):
