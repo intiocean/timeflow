@@ -14,79 +14,53 @@ featuring simple statistics and reporting capabilities
 Install
 -------
 
-``pip3 install timeflow``
+``pip install timeflow``
 
 Written in ``python3``. Best user experience with ``python3``.
 
 Tutorial
------------------
+--------
 ::
 
-    to start working (message content is not important)
-    >>> tf log "Arrived."
+    $ tf --help
+    usage: tf [-h] [-v] {edit,stats,log} ...
 
-    to save a timestamp and your log message,
-    when finished doing a task write
-    >>> tf log "Timeflow: create README.rst"
+    General usage
+    -------------
+    When arriving in the morning to start the timer
+        tf log
 
-    here 'Timeflow' is a 'project' you were working on and 'create README.rst'
-    is a log of what you were exactly doing this time. Both project and log
-    must be separated by a colon and space (``: ``).
+    Logging time
+        tf log "project: a commit message for my time"
+        tf log project
+        tf log "A log message without a project will get grouped into a project called Other"
+        tf log "Coffee**: the asterisks at the end of the project mark this as a non-work"
 
-    some tasks are not (payable) work, mark them with two asterisks (**)
-    >>> tf log "Slack: chatting in the office ** "
+    Editing the time log
+        tf edit
 
-    you can have 'projects' without any explanations
-    >>> tf log "Lunch ** "
-    >>> tf log "Daily Scrum"
+    Showing time spent
+        tf stats
 
-    if you made a mistake, or missed to log of your activities
-    you can edit like this
-    >>> tf edit
+    For further options just run add --help to any of the above commands.
 
-    this way timeflow will try to run your editor set in $EDITOR
-    or you can try
-    >>> tf edit -e vim
+    Opinionated usage
+    -----------------
+    The way I use it is that I have a category for each of my ongoing work/projects and then a few other categories
+    * Meeting
+    * Email
+    * Support: only for actual support
+    * Team: team discussions, questions, interuptions, fixing things for the team, etc
+    * Code Review: I copy a snippet from the URL of the PR to identify code reviews. eg. tools_bin/pull-requests/46
 
-    to open log file in vim
+    If its related to a Jira I add #EQ-1234 in the message
 
-    to check how much you've worked today
-    >>> tf stats
+    positional arguments:
+      {edit,stats,log}  sub-command help
+        log             Create timelog message
+        edit            Edit timelog file
+        stats           Show how much time was spent working or slacking
 
-    or to make a report
-    >>> tf stats --report
-
-    you can pass date ranges for stats command, e.g.
-    >>> tf stats --from 2015-01-01 --to 2015-01-31
-    >>> tf stats --from 2015-01-01 --to 2015-01-31 --report
-
-Commands & options
-------------------
-``log``
-    ``log LOG_TEXT`` - create new log entry to timeflow's log file.
-
-``edit``
-    opens timeflow's log file, by default trying to open an editor used in ``$EDITOR`` environment variable.
-
-    ``-e EDITOR`` - passes editor to be used in opening log file.
-
-``stats``
-    shows today's work and slack time.
-
-    ``-y, --yesterday`` - shows yesterday's work and slack time.
-
-    ``-d DATE, --day DATE`` - shows arbitrary day's work and slack time.
-
-    ``--week WEEK_NUMBER`` - shows arbitrary week's work and slack time.
-
-    ``--last-week`` - shows last week's work and slack time.
-
-    ``--month MONTH_NUMBER`` - shows arbitrary month's work and slack time.
-
-    ``--last-month`` - shows last month's work and slack time.
-
-    ``-f DATE, --from DATE`` - shows work and slack time, from DATE until today, if ``--to`` option is not used.
-
-    ``-t DATE, --to DATE`` - shows work and slack time, up to DATE. Must be used with ``--from`` option.
-
-    ``--report`` - shows report for today, or some other time range if specified using available options.
+    optional arguments:
+      -h, --help        show this help message and exit
+      -v, --version     Show timeflow's version
